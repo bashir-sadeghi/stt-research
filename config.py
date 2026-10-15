@@ -186,6 +186,7 @@ def parse_args():
     parser.add_argument('--batch-size_test', type=int, default=None, help='batch size for testing')
     parser.add_argument('--batch-size_val', type=int, default=None, help='batch size for validation')
     parser.add_argument('--batch-size_train', type=int, default=None, help='batch size for training')
+    parser.add_argument('--accumulate-grad-batches', type=int, default=1, help='training batches per manual optimizer update')
     parser.add_argument('--nepochs', type=int, default=None, help='number of epochs to train')
     parser.add_argument('--nepochs-nncc', type=int, default=None, help='number of epochs to train NNCC', required=False)
     parser.add_argument('--init-epochs', type=int, default=None, help='starting epoch to clamp estimated parameters')

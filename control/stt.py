@@ -35,6 +35,11 @@ class STT(pl.LightningModule):
         self.automatic_optimization = False
         self.save_hyperparameters(ignore=['dataloader'])
         self.opts = opts
+        self.accumulate_grad_batches = getattr(opts, 'accumulate_grad_batches', 1)
+        if self.accumulate_grad_batches < 1:
+            raise ValueError('accumulate_grad_batches must be a positive integer')
+        self._accumulated_batches = 0
+        self._accumulated_samples = 0
         self.tokenizer = dataloader.tokenizer
         self.model = getattr(models, opts.model_type)(**opts.model_options)
 
@@ -88,23 +93,47 @@ class STT(pl.LightningModule):
         self.cer[f'{stage}_cer'].update(predictions, batch['texts'])
         return loss, predictions
 
+    def on_train_epoch_start(self):
+        self._accumulated_batches = 0
+        self._accumulated_samples = 0
+        self.optimizers().zero_grad()
+
     def training_step(self, batch, batch_idx):
         # pdb.set_trace()
         loss, predictions = self._shared_step(batch, 'train')
         if batch_idx == 0:
             self._log_text_samples(batch, predictions, 'train')
 
-        opt = self.optimizers()
-        opt.zero_grad()
-        self.manual_backward(loss)
+        # CTC returns a mean over utterances. Accumulate sample sums, then
+        # average once per update, including a smaller final batch/window.
+        batch_size = batch['features'].shape[0]
+        self.manual_backward(loss * batch_size)
+        self._accumulated_batches += 1
+        self._accumulated_samples += batch_size
+
+        if (self._accumulated_batches == self.accumulate_grad_batches
+                or self.trainer.is_last_batch):
+            opt = self.optimizers()
+            opt.step()  # Calls on_before_optimizer_step before updating weights.
+            opt.zero_grad()
+            self._accumulated_batches = 0
+            self._accumulated_samples = 0
+        return loss
+
+    def on_before_optimizer_step(self, optimizer):
+        # Lightning calls this after AMP unscaling, when mixed precision is used.
+        # Normalize and clip only the complete accumulated gradient.
+        with torch.no_grad():
+            for group in optimizer.param_groups:
+                for parameter in group['params']:
+                    if parameter.grad is not None:
+                        parameter.grad.div_(self._accumulated_samples)
         if self.opts.gradient_clip > 0.0:
             self.clip_gradients(
-                opt,
+                optimizer,
                 gradient_clip_val=self.opts.gradient_clip,
                 gradient_clip_algorithm='norm',
             )
-        opt.step()
-        return loss
 
     def on_train_epoch_end(self):
         # Match the original controller: step the scheduler once per epoch.
