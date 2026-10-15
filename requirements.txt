@@ -1,0 +1,8 @@
+torch==2.8.0
+torchaudio==2.8.0
+pytorch-lightning==2.5.5
+torchmetrics==1.8.2
+soundfile==0.13.1
+tensorboard==2.20.0
+numpy==2.2.6
+psutil==7.0.0
