@@ -41,20 +41,21 @@ def main():
     )
     dataloader = getattr(datasets, args.dataset)(args)
     model = getattr(control, args.control_type)(args, dataloader)
-    if args.resume is not None and not args.test_only:
+    if args.resume is not None and not (args.test_only or args.validate_only):
         # import pdb; pdb.set_trace()
         checkpoint = torch.load(args.resume, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["state_dict"])
  
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=os.path.join(args.out_dir, 'checkpoints'),
-        filename=args.project_name + '-{epoch:03d}-{val_loss:.3f}',
-        monitor='val_loss',
-        save_top_k=1)
- 
-    callbacks = [checkpoint_callback]
-    if args.EarlyStopping:
-        callbacks.append(EarlyStopping(**args.earlystop_options))
+    callbacks = []
+    if not args.validate_only:
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=os.path.join(args.out_dir, 'checkpoints'),
+            filename=args.project_name + '-{epoch:03d}-{val_loss:.3f}',
+            monitor='val_loss',
+            save_top_k=1)
+        callbacks.append(checkpoint_callback)
+        if args.EarlyStopping:
+            callbacks.append(EarlyStopping(**args.earlystop_options))
 
     if torch.backends.mps.is_available() and args.ngpu > 0:
         # Apple Silicon (single device)
@@ -97,11 +98,15 @@ def main():
         check_val_every_n_epoch=args.check_val_every_n_epochs
     )
  
+    if args.validate_only:
+        trainer_kwargs["enable_checkpointing"] = False
     if strategy is not None:
         trainer_kwargs["strategy"] = strategy
  
     trainer = pl.Trainer(**trainer_kwargs)
-    if args.test_only:
+    if args.validate_only:
+        trainer.validate(model, datamodule=dataloader, ckpt_path=args.resume)
+    elif args.test_only:
         if args.resume is None:
             raise ValueError("Test-only evaluation requires --resume with a checkpoint path")
         trainer.test(model, datamodule=dataloader, ckpt_path=args.resume)

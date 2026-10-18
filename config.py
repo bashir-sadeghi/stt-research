@@ -56,7 +56,8 @@ def parse_args():
     parser.add_argument('--test-dev-percent', type=float, default=None, metavar='', help='percentage of dev in test')
     parser.add_argument('--train-dev-percent', type=float, default=None, metavar='', help='percentage of dev in train')    
     parser.add_argument('--resume', type=str, default=None, help='full path of models to resume training')
-    parser.add_argument('--test-only', type=misc.str2bool, default=False, help='evaluate a checkpoint without training')
+    parser.add_argument('--test-only', type=misc.str2bool, default=False, help='evaluate a checkpoint on the test split without training')
+    parser.add_argument('--validate-only', type=misc.str2bool, default=False, help='evaluate a checkpoint on the development split without training')
     parser.add_argument('--nclasses', type=int, default=None, metavar='', dest='noutputs', help='number of classes for classification')
     parser.add_argument('--noutputs', type=int, default=None, metavar='', help='number of outputs, i.e. number of classes for classification')
     parser.add_argument('--input-filename-test', type=str, default=None, help='input test filename for filelist and folderlist')
@@ -233,6 +234,10 @@ def parse_args():
 
 
     args = parser.parse_args()
+    if args.test_only and args.validate_only:
+        parser.error('--test-only and --validate-only cannot both be enabled')
+    if (args.test_only or args.validate_only) and not args.resume:
+        parser.error('Checkpoint evaluation requires --resume with a checkpoint path')
 
     # reciprocals = [1.0 / f for f in args.a_res if f != 0 and f != 1]  # Ensure no division by zero
     # args.a_res.extend(reciprocals)

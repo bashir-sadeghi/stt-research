@@ -253,7 +253,12 @@ class LibriSpeech(pl.LightningDataModule):
     def prepare_data(self):
         if not self.download:
             return
-        splits = [self.test_split] if self.opts.test_only else [self.train_split, self.dev_split]
+        if self.opts.test_only:
+            splits = [self.test_split]
+        elif getattr(self.opts, 'validate_only', False):
+            splits = [self.dev_split]
+        else:
+            splits = [self.train_split, self.dev_split]
         for split in dict.fromkeys(splits):
             if split not in self.official_splits:
                 raise ValueError(
@@ -277,7 +282,12 @@ class LibriSpeech(pl.LightningDataModule):
 
     def setup(self, stage=None):
         if stage is None:
-            stage = "test" if self.opts.test_only else "fit"
+            if self.opts.test_only:
+                stage = "test"
+            elif getattr(self.opts, 'validate_only', False):
+                stage = "validate"
+            else:
+                stage = "fit"
         if stage == "fit":
             if self.train_dataset is None:
                 self.train_dataset = self._dataset(self.train_split)
